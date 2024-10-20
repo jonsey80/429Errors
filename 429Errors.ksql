@@ -1,0 +1,18 @@
+let from = datetime({starttime});
+let until = datetime({endtime});
+let db = "{DB}";
+let collection = "{collection}";
+
+let operation =AzureDiagnostics
+|where TimeGenerated between (from .. until ) and databaseName_s  == db and collectionName_s == collection  and Category =='DataPlaneRequests'
+|project format_datetime(TimeGenerated,'HH:mm'),statusCode_s,activityId_g;
+
+let partitions = AzureDiagnostics
+|where TimeGenerated between (from .. until ) and databaseName_s  == db and collectionName_s == collection and Category !='DataPlaneRequests' and operationType_s  != 'Other'
+|project activityId_g,partitionKey_s, partitionKeyRangeId_s;
+
+operation
+|join kind=inner partitions on $left.activityId_g == $right.activityId_g
+|where statusCode_s == '429'
+|summarize count() by TimeGenerated,statusCode_s,partitionKey_s,partitionKeyRangeId_s 
+|order by partitionKey_s desc
